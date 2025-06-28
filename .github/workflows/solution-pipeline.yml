@@ -42,6 +42,7 @@ jobs:
           exit 1
         fi
         echo "✅ Found solution file: $SOLUTION_FILE"
+        echo "SOLUTION_FILE=$SOLUTION_FILE" >> $GITHUB_ENV
     
     - name: Update status
       if: always()
@@ -55,3 +56,65 @@ jobs:
         ./scripts/update-status.sh "$BRANCH_NAME" "$STATUS"
       env:
         SPRING_APP_URL: ${{ secrets.SPRING_APP_URL }}
+
+  clean-branch:
+    needs: validate
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.branch_name || github.ref }}
+        fetch-depth: 0
+        
+    - name: Extract branch name
+      run: |
+        if [ -n "${{ github.event.inputs.branch_name }}" ]; then
+          echo "BRANCH_NAME=${{ github.event.inputs.branch_name }}" >> $GITHUB_ENV
+        else
+          echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+        fi
+    
+    - name: Find solution file
+      run: |
+        SOLUTION_FILE=$(find src/main/java/solutions -name "Ticket*Solution.java" | head -1)
+        if [ -z "$SOLUTION_FILE" ]; then
+          echo "❌ No solution file found"
+          exit 1
+        fi
+        echo "✅ Found solution file: $SOLUTION_FILE"
+        echo "SOLUTION_FILE=$SOLUTION_FILE" >> $GITHUB_ENV
+    
+    - name: Push only solution file to branch
+      run: |
+        # Get the solution file name
+        SOLUTION_FILENAME=$(basename $SOLUTION_FILE)
+        
+        # Create a temporary directory
+        mkdir -p temp_dir/solutions
+        
+        # Copy only the solution file to the temp directory
+        cp $SOLUTION_FILE temp_dir/solutions/
+        
+        # Configure git
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        
+        # Remove all files from the branch but keep git directory
+        find . -not -path "./.git*" -type f -delete
+        find . -type d -empty -delete
+        
+        # Create solutions directory and copy the solution file
+        mkdir -p solutions
+        cp temp_dir/solutions/$SOLUTION_FILENAME solutions/
+        
+        # Add and commit only the solution file
+        git add solutions/$SOLUTION_FILENAME
+        git add -u  # Stage deleted files
+        
+        # Commit and push
+        git commit -m "Keep only solution file: $SOLUTION_FILENAME"
+        git push -f origin $BRANCH_NAME
+        
+        echo "✅ Pushed only the solution file to branch $BRANCH_NAME"

@@ -12,7 +12,7 @@ on:
       - 'solution/**'
 
 jobs:
-  validate-and-push:
+  validate:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -43,20 +43,71 @@ jobs:
         fi
         echo "✅ Found solution file: $SOLUTION_FILE"
     
-    - name: Push solution branch
+    - name: Update status
+      if: always()
       run: |
-        # Configure git
+        if [ ${{ job.status }} == 'success' ]; then
+          STATUS="validated"
+        else
+          STATUS="failed"
+        fi
+        chmod +x ./scripts/update-status.sh
+        ./scripts/update-status.sh "$BRANCH_NAME" "$STATUS"
+      env:
+        SPRING_APP_URL: ${{ secrets.SPRING_APP_URL }}
+
+  merge-solution:
+    needs: validate
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout main
+      uses: actions/checkout@v4
+      with:
+        ref: main
+        fetch-depth: 0
+    
+    - name: Extract branch name
+      run: |
+        if [ -n "${{ github.event.inputs.branch_name }}" ]; then
+          echo "BRANCH_NAME=${{ github.event.inputs.branch_name }}" >> $GITHUB_ENV
+        else
+          echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+        fi
+    
+    - name: Fetch solution branch
+      run: git fetch origin $BRANCH_NAME
+    
+    - name: Copy solution file to main
+      run: |
+        # Create a temporary directory
+        mkdir -p temp_solution
+        
+        # Checkout the solution file from the solution branch
+        git checkout origin/$BRANCH_NAME -- src/main/java/solutions
+        
+        # Make sure the destination directory exists
+        mkdir -p src/main/java/solutions
+        
+        # Find the solution file
+        SOLUTION_FILE=$(find src/main/java/solutions -name "Ticket*Solution.java" | head -1)
+        
+        if [ -z "$SOLUTION_FILE" ]; then
+          echo "❌ No solution file found"
+          exit 1
+        fi
+        
+        echo "✅ Found solution file: $SOLUTION_FILE"
+        
+        # Commit the solution file to main
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
+        git add $SOLUTION_FILE
+        git commit -m "Merge solution from $BRANCH_NAME"
+        git push origin main
         
-        # Make sure we're on the right branch
-        git checkout $BRANCH_NAME
-        
-        # Push the branch to GitHub (this is redundant if already pushed, but ensures it's there)
-        git push origin $BRANCH_NAME
-        
-        # Update status to validated
+        # Update status
         chmod +x ./scripts/update-status.sh
-        ./scripts/update-status.sh "$BRANCH_NAME" "validated"
+        ./scripts/update-status.sh "$BRANCH_NAME" "merged"
       env:
         SPRING_APP_URL: ${{ secrets.SPRING_APP_URL }}

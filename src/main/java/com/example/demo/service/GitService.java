@@ -44,6 +44,9 @@ public class GitService {
             // Open existing repository
             Git git = Git.open(new File(repositoryPath));
             
+            // Store the current branch name before switching
+            String currentBranch = git.getRepository().getBranch();
+            
             // Create new branch from main
             git.checkout()
                 .setCreateBranch(true)
@@ -77,12 +80,15 @@ public class GitService {
                 .add(branchName)
                 .call();
             
+            // Return to the original branch
+            git.checkout().setName(currentBranch).call();
+            
             git.close();
             
             System.out.println("✅ Branch created successfully: " + branchName);
             return branchName;
             
-        } catch (GitAPIException | IOException e) {
+        } catch (Exception e) {
             System.err.println("❌ Error creating branch: " + e.getMessage());
             throw new RuntimeException("Failed to create branch", e);
         }

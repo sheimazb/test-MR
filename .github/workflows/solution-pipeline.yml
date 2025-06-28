@@ -67,6 +67,7 @@ jobs:
       with:
         ref: ${{ github.event.inputs.branch_name || github.ref }}
         fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
         
     - name: Extract branch name
       run: |
@@ -95,9 +96,13 @@ jobs:
         cp "$SOLUTION_FILE" /tmp/backup/
         ls -la /tmp/backup/
         
-        # Configure git
+        # Configure git with token for authentication
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
+        
+        # Set the remote URL with token authentication
+        REPO_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+        git remote set-url origin "$REPO_URL"
         
         # Remove all files from the branch but keep git directory
         find . -not -path "./.git*" -type f -delete

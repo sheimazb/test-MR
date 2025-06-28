@@ -86,24 +86,31 @@ jobs:
         fi
         echo "✅ Found solution file: $SOLUTION_FILE"
         
-        # Get the solution file name
+        # Get the solution file name and content
         SOLUTION_FILENAME=$(basename $SOLUTION_FILE)
+        echo "Solution filename: $SOLUTION_FILENAME"
+        
+        # Create a backup of the solution file
+        mkdir -p /tmp/backup
+        cp "$SOLUTION_FILE" /tmp/backup/
+        ls -la /tmp/backup/
         
         # Configure git
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
         
-        # Save the solution file content to a temporary file
-        mkdir -p temp_dir
-        cp "$SOLUTION_FILE" temp_dir/
-        
         # Remove all files from the branch but keep git directory
         find . -not -path "./.git*" -type f -delete
         find . -type d -empty -not -path "./.git*" -delete
         
-        # Create solutions directory and copy the solution file back
+        # Create solutions directory
         mkdir -p solutions
-        cp temp_dir/$SOLUTION_FILENAME solutions/
+        
+        # Copy the solution file back from backup
+        cp /tmp/backup/$SOLUTION_FILENAME solutions/
+        
+        # Verify the file was copied correctly
+        ls -la solutions/
         
         # Add and commit only the solution file
         git add solutions/$SOLUTION_FILENAME

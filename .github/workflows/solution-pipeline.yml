@@ -1,0 +1,123 @@
+name: Solution CI/CD Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch_name:
+        description: 'Branch name to process'
+        required: true
+        type: string
+  push:
+    branches:
+      - 'solution/**'
+
+jobs:
+  test-and-validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.branch_name || github.ref }}
+    
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    
+    - name: Cache Maven dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+    
+    - name: Extract branch name
+      shell: bash
+      run: |
+        if [ -n "${{ github.event.inputs.branch_name }}" ]; then
+          echo "BRANCH_NAME=${{ github.event.inputs.branch_name }}" >> $GITHUB_ENV
+        else
+          echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+        fi
+    
+    - name: Validate solution structure
+      run: |
+        echo "🔍 Validating solution for branch: $BRANCH_NAME"
+        chmod +x ./scripts/validate-solution.sh
+        ./scripts/validate-solution.sh "$BRANCH_NAME"
+    
+    - name: Compile Java code
+      run: |
+        echo "🔨 Compiling solution code..."
+        mvn compile -q
+    
+    - name: Run tests
+      run: |
+        echo "🧪 Running tests..."
+        mvn test -q
+    
+    - name: Update pipeline status to success
+      if: success()
+      run: |
+        echo "✅ Pipeline completed successfully"
+        chmod +x ./scripts/update-status.sh
+        ./scripts/update-status.sh "$BRANCH_NAME" "success"
+      env:
+        SPRING_APP_URL: ${{ secrets.SPRING_APP_URL }}
+    
+    - name: Update pipeline status to failure
+      if: failure()
+      run: |
+        echo "❌ Pipeline failed"
+        chmod +x ./scripts/update-status.sh
+        ./scripts/update-status.sh "$BRANCH_NAME" "failed"
+      env:
+        SPRING_APP_URL: ${{ secrets.SPRING_APP_URL }}
+
+  auto-merge:
+    needs: test-and-validate
+    runs-on: ubuntu-latest
+    if: success()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+    
+    - name: Extract branch name
+      shell: bash
+      run: |
+        if [ -n "${{ github.event.inputs.branch_name }}" ]; then
+          echo "BRANCH_NAME=${{ github.event.inputs.branch_name }}" >> $GITHUB_ENV
+        else
+          echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> $GITHUB_ENV
+        fi
+    
+    - name: Merge to main
+      run: |
+        echo "Merging $BRANCH_NAME to main"
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        
+        git checkout main
+        git pull origin main
+        git merge origin/$BRANCH_NAME --no-ff -m "Auto-merge solution from $BRANCH_NAME"
+        git push origin main
+        
+        # Delete the merged branch
+        git push origin --delete $BRANCH_NAME
+        
+        echo " Successfully merged and cleaned up branch: $BRANCH_NAME"
+    
+    - name: Final status update
+      run: |
+        echo "Solution successfully merged to main"
+        chmod +x ./scripts/update-status.sh
+        ./scripts/update-status.sh "$BRANCH_NAME" "merged"
+      env:
+        SPRING_APP_URL: ${{ secrets.SPRING_APP_URL }} 

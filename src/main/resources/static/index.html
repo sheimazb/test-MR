@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticket Solution Pipeline</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .ticket { border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .status { padding: 5px 10px; border-radius: 3px; color: white; }
+        .in-progress { background-color: #007bff; }
+        .resolved { background-color: #28a745; }
+        .merged { background-color: #ffc107; color: black; }
+        .test { background-color: #17a2b8; }
+        .closed { background-color: #6c757d; }
+        button { margin: 5px; padding: 8px 15px; border: none; border-radius: 3px; cursor: pointer; }
+        .btn-primary { background-color: #007bff; color: white; }
+        .btn-success { background-color: #28a745; color: white; }
+        .btn-warning { background-color: #ffc107; color: black; }
+        textarea { width: 100%; height: 150px; margin: 10px 0; }
+        .pipeline-status { font-size: 12px; color: #666; }
+    </style>
+</head>
+<body>
+    <h1>🎫 Ticket Solution Pipeline Manager</h1>
+    
+    <div id="tickets-container"></div>
+    
+    <!-- Solution Creation Modal -->
+    <div id="solution-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 5px; width: 80%; max-width: 600px;">
+            <h3>Create Solution for Ticket #<span id="modal-ticket-id"></span></h3>
+            
+            <label>Description:</label>
+            <textarea id="solution-description" placeholder="Describe your solution..."></textarea>
+            
+            <label>Solution Code:</label>
+            <textarea id="solution-code" placeholder="public void solveProblem() {
+    // Your solution code here
+}"></textarea>
+            
+            <div>
+                <button class="btn-success" onclick="submitSolution()">Create Solution</button>
+                <button onclick="closeSolutionModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080/api';
+        
+        // Load tickets on page load
+        document.addEventListener('DOMContentLoaded', loadTickets);
+        
+        async function loadTickets() {
+            try {
+                const response = await fetch(`${API_BASE}/tickets`);
+                const tickets = await response.json();
+                displayTickets(tickets);
+            } catch (error) {
+                console.error('Error loading tickets:', error);
+                alert('Error loading tickets. Make sure your Spring Boot application is running.');
+            }
+        }
+        
+        function displayTickets(tickets) {
+            const container = document.getElementById('tickets-container');
+            container.innerHTML = '';
+            
+            tickets.forEach(ticket => {
+                const ticketDiv = document.createElement('div');
+                ticketDiv.className = 'ticket';
+                ticketDiv.innerHTML = `
+                    <h3>🎫 Ticket #${ticket.id}: ${ticket.title}</h3>
+                    <p>${ticket.description}</p>
+                    <p><strong>Status:</strong> <span class="status ${ticket.status.toLowerCase().replace('_', '-')}">${ticket.status}</span></p>
+                    ${ticket.solutionBranch ? `<p class="pipeline-status">📋 Branch: ${ticket.solutionBranch}</p>` : ''}
+                    ${ticket.pipelineStatus ? `<p class="pipeline-status">🔄 Pipeline: ${ticket.pipelineStatus}</p>` : ''}
+                    
+                    <div>
+                        ${getActionButtons(ticket)}
+                    </div>
+                `;
+                container.appendChild(ticketDiv);
+            });
+        }
+        
+        function getActionButtons(ticket) {
+            let buttons = '';
+            
+            switch(ticket.status) {
+                case 'IN_PROGRESS':
+                    buttons = `<button class="btn-primary" onclick="openSolutionModal(${ticket.id})">Create Solution</button>`;
+                    break;
+                case 'RESOLVED':
+                    buttons = `
+                        <button class="btn-warning" onclick="updateTicketStatus(${ticket.id}, 'MERGED')">🚀 Trigger Pipeline (Set to Merged)</button>
+                        <button onclick="updateTicketStatus(${ticket.id}, 'IN_PROGRESS')">Back to In Progress</button>
+                    `;
+                    break;
+                case 'MERGED':
+                    buttons = `<span style="color: orange;">⏳ Pipeline Running...</span>`;
+                    break;
+                case 'TEST':
+                    buttons = `
+                        <button class="btn-success" onclick="updateTicketStatus(${ticket.id}, 'CLOSED')">✅ Mark as Tested & Close</button>
+                        <button onclick="updateTicketStatus(${ticket.id}, 'IN_PROGRESS')">Reopen</button>
+                    `;
+                    break;
+                case 'CLOSED':
+                    buttons = `<span style="color: green;">✅ Completed</span>`;
+                    break;
+            }
+            
+            return buttons;
+        }
+        
+        function openSolutionModal(ticketId) {
+            document.getElementById('modal-ticket-id').textContent = ticketId;
+            document.getElementById('solution-modal').style.display = 'block';
+        }
+        
+        function closeSolutionModal() {
+            document.getElementById('solution-modal').style.display = 'none';
+            document.getElementById('solution-description').value = '';
+            document.getElementById('solution-code').value = '';
+        }
+        
+        async function submitSolution() {
+            const ticketId = document.getElementById('modal-ticket-id').textContent;
+            const description = document.getElementById('solution-description').value;
+            const solutionCode = document.getElementById('solution-code').value;
+            
+            if (!description || !solutionCode) {
+                alert('Please fill in both description and solution code');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/solutions/tickets/${ticketId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        description: description,
+                        solutionCode: solutionCode
+                    })
+                });
+                
+                if (response.ok) {
+                    alert('✅ Solution created successfully! Ticket status changed to RESOLVED.');
+                    closeSolutionModal();
+                    loadTickets(); // Refresh the tickets
+                } else {
+                    alert('❌ Error creating solution');
+                }
+            } catch (error) {
+                console.error('Error creating solution:', error);
+                alert('❌ Error creating solution: ' + error.message);
+            }
+        }
+        
+        async function updateTicketStatus(ticketId, newStatus) {
+            try {
+                const response = await fetch(`${API_BASE}/tickets/${ticketId}/status`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        status: newStatus
+                    })
+                });
+                
+                if (response.ok) {
+                    if (newStatus === 'MERGED') {
+                        alert('🚀 Pipeline triggered! Status changed to MERGED.');
+                    } else {
+                        alert(`✅ Ticket status updated to ${newStatus}`);
+                    }
+                    loadTickets(); // Refresh the tickets
+                } else {
+                    alert('❌ Error updating ticket status');
+                }
+            } catch (error) {
+                console.error('Error updating status:', error);
+                alert('❌ Error updating status: ' + error.message);
+            }
+        }
+        
+        // Auto-refresh every 10 seconds to show pipeline updates
+        setInterval(loadTickets, 10000);
+    </script>
+</body>
+</html> 

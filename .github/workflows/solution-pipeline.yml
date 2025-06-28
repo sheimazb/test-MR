@@ -45,24 +45,24 @@ jobs:
     
     - name: Validate solution structure
       run: |
-        echo "🔍 Validating solution for branch: $BRANCH_NAME"
+        echo " Validating solution for branch: $BRANCH_NAME"
         chmod +x ./scripts/validate-solution.sh
         ./scripts/validate-solution.sh "$BRANCH_NAME"
     
     - name: Compile Java code
       run: |
-        echo "🔨 Compiling solution code..."
+        echo " Compiling solution code..."
         mvn compile -q
     
     - name: Run tests
       run: |
-        echo "🧪 Running tests..."
+        echo " Running tests..."
         mvn test -q
     
     - name: Update pipeline status to success
       if: success()
       run: |
-        echo "✅ Pipeline completed successfully"
+        echo " Pipeline completed successfully"
         chmod +x ./scripts/update-status.sh
         ./scripts/update-status.sh "$BRANCH_NAME" "success"
       env:
@@ -71,7 +71,7 @@ jobs:
     - name: Update pipeline status to failure
       if: failure()
       run: |
-        echo "❌ Pipeline failed"
+        echo " Pipeline failed"
         chmod +x ./scripts/update-status.sh
         ./scripts/update-status.sh "$BRANCH_NAME" "failed"
       env:

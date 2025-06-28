@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class GitService {
@@ -47,12 +48,19 @@ public class GitService {
             // Store the current branch name before switching
             String currentBranch = git.getRepository().getBranch();
             
-            // Create new branch from main
-            git.checkout()
-                .setCreateBranch(true)
-                .setName(branchName)
-                .setStartPoint("main")
-                .call();
+            // Create orphan branch (with no parent commit)
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                "git", "-C", repositoryPath, "checkout", "--orphan", branchName
+            );
+            Process process = processBuilder.start();
+            process.waitFor();
+            
+            // Clean the working directory in the new branch
+            ProcessBuilder cleanBuilder = new ProcessBuilder(
+                "git", "-C", repositoryPath, "rm", "-rf", "."
+            );
+            Process cleanProcess = cleanBuilder.start();
+            cleanProcess.waitFor();
             
             // Create solution file
             String fileName = "Ticket" + ticketId + "Solution.java";
@@ -77,6 +85,7 @@ public class GitService {
             git.push()
                 .setCredentialsProvider(new UsernamePasswordCredentialsProvider("token", gitToken))
                 .setRemote("origin")
+                .setForce(true)
                 .add(branchName)
                 .call();
             
